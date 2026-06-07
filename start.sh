@@ -88,9 +88,10 @@ export TXHOST_PROVIDER_LOGO=${PROVIDER_LOGO}
 if [[ -n "${PTERO_URL}" && -n "${PTERO_ADMIN_KEY}" && -n "${P_SERVER_UUID}" ]]; then
     echo -e "${Text} ${BLUE}Provisioning database via Pterodactyl Application API...${NC}"
     _BASE="${PTERO_URL%/}/api/application"
-    _HDR=(-sSL -H "Authorization: Bearer ${PTERO_ADMIN_KEY}" -H "Accept: application/json" -H "Content-Type: application/json")
+    _HDR=(-sSLg -H "Authorization: Bearer ${PTERO_ADMIN_KEY}" -H "Accept: application/json" -H "Content-Type: application/json")
 
     # 1. Resolve internal server ID from the UUID Pterodactyl injects
+    # -g (--globoff) prevents curl from interpreting [ ] in the query string as a range
     _SERVER=$(curl "${_HDR[@]}" "${_BASE}/servers?filter[uuid]=${P_SERVER_UUID}")
     _SRV_ID=$(echo "$_SERVER" | jq -r '.data[0].attributes.id // empty')
 
