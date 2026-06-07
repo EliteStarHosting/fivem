@@ -124,13 +124,12 @@ if [[ -n "${PTERO_URL}" && -n "${PTERO_ADMIN_KEY}" && -n "${P_SERVER_UUID}" ]]; 
             DB_USER=$(echo "$_DB_LIST" | jq -r '.data[0].attributes.username')
             DB_PASSWORD=$(echo "$_DB_LIST" | jq -r '.data[0].attributes.relationships.password.attributes.password')
         else
-            # 3. Fetch the first available database host ID
-            _HOSTS=$(curl "${_HDR[@]}" "${_BASE}/databases/hosts")
-            echo -e "${RED}[DEBUG] Hosts API raw response: ${_HOSTS}${NC}"
-            _HOST_ID=$(echo "$_HOSTS" | jq -r '.data[0].attributes.id // empty')
+            # 3. Use the configured database host ID (defaults to 1).
+            # Set PTERO_DB_HOST_ID as a hidden egg variable if your panel uses a different host ID.
+            _HOST_ID="${PTERO_DB_HOST_ID:-1}"
 
             if [[ -z "$_HOST_ID" ]]; then
-                echo -e "${RED}[ERROR] No database hosts configured in Pterodactyl. Add one in Admin > Databases.${NC}"
+                echo -e "${RED}[ERROR] No database host ID set. Set PTERO_DB_HOST_ID in the egg variables.${NC}"
             else
                 echo -e "${Text} ${BLUE}No database found, creating one...${NC}"
                 _DB_CREATE=$(curl "${_HDR[@]}" -X POST \
