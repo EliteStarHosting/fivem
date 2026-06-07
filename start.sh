@@ -81,6 +81,70 @@ export TXHOST_DEFAULT_CFXKEY=${FIVEM_LICENSE}
 export TXHOST_PROVIDER_NAME=${PROVIDER_NAME}
 export TXHOST_PROVIDER_LOGO=${PROVIDER_LOGO}
 
+# Database auto-provisioning via Pterodactyl Application API (admin key)
+# PTERO_URL and PTERO_ADMIN_KEY should be set as hidden egg variables
+# (user_viewable: false, user_editable: false) so server owners cannot see them.
+# P_SERVER_UUID is automatically injected by Pterodactyl.
+if [[ -n "${PTERO_URL}" && -n "${PTERO_ADMIN_KEY}" && -n "${P_SERVER_UUID}" ]]; then
+    echo -e "${Text} ${BLUE}Provisioning database via Pterodactyl Application API...${NC}"
+    _BASE="${PTERO_URL%/}/api/application"
+    _HDR=(-sSL -H "Authorization: Bearer ${PTERO_ADMIN_KEY}" -H "Accept: application/json" -H "Content-Type: application/json")
+
+    # 1. Resolve internal server ID from the UUID Pterodactyl injects
+    _SERVER=$(curl "${_HDR[@]}" "${_BASE}/servers?filter[uuid]=${P_SERVER_UUID}")
+    _SRV_ID=$(echo "$_SERVER" | jq -r '.data[0].attributes.id // empty')
+
+    if [[ -z "$_SRV_ID" ]]; then
+        echo -e "${RED}[ERROR] Could not resolve server in Pterodactyl panel. Check PTERO_URL and PTERO_ADMIN_KEY.${NC}"
+    else
+        # 2. Check for an existing database
+        _DB_LIST=$(curl "${_HDR[@]}" "${_BASE}/servers/${_SRV_ID}/databases?include=password,host")
+        _DB_COUNT=$(echo "$_DB_LIST" | jq -r '.data | length')
+
+        if [[ "$_DB_COUNT" -gt 0 ]]; then
+            echo -e "${Text} ${BLUE}Found existing database, reusing it...${NC}"
+            _DB=$(echo "$_DB_LIST" | jq -r '.data[0].attributes')
+            DB_HOST=$(echo "$_DB_LIST" | jq -r '.data[0].attributes.relationships.host.attributes.host')
+            DB_PORT=$(echo "$_DB_LIST" | jq -r '.data[0].attributes.relationships.host.attributes.port')
+            DB_NAME=$(echo "$_DB_LIST" | jq -r '.data[0].attributes.database')
+            DB_USER=$(echo "$_DB_LIST" | jq -r '.data[0].attributes.username')
+            DB_PASSWORD=$(echo "$_DB_LIST" | jq -r '.data[0].attributes.relationships.password.attributes.password')
+        else
+            # 3. Fetch the first available database host ID
+            _HOSTS=$(curl "${_HDR[@]}" "${_BASE}/databases/hosts")
+            _HOST_ID=$(echo "$_HOSTS" | jq -r '.data[0].attributes.id // empty')
+
+            if [[ -z "$_HOST_ID" ]]; then
+                echo -e "${RED}[ERROR] No database hosts configured in Pterodactyl. Add one in Admin > Databases.${NC}"
+            else
+                echo -e "${Text} ${BLUE}No database found, creating one...${NC}"
+                _DB_CREATE=$(curl "${_HDR[@]}" -X POST \
+                    -d "{\"database\":\"fivem\",\"remote\":\"%\",\"host\":${_HOST_ID}}" \
+                    "${_BASE}/servers/${_SRV_ID}/databases?include=password,host")
+
+                DB_HOST=$(echo "$_DB_CREATE" | jq -r '.attributes.relationships.host.attributes.host')
+                DB_PORT=$(echo "$_DB_CREATE" | jq -r '.attributes.relationships.host.attributes.port')
+                DB_NAME=$(echo "$_DB_CREATE" | jq -r '.attributes.database')
+                DB_USER=$(echo "$_DB_CREATE" | jq -r '.attributes.username')
+                DB_PASSWORD=$(echo "$_DB_CREATE" | jq -r '.attributes.relationships.password.attributes.password')
+            fi
+        fi
+
+        if [[ -n "$DB_HOST" && "$DB_HOST" != "null" ]]; then
+            export TXHOST_DEFAULT_DBHOST="${DB_HOST}"
+            export TXHOST_DEFAULT_DBPORT="${DB_PORT}"
+            export TXHOST_DEFAULT_DBUSER="${DB_USER}"
+            export TXHOST_DEFAULT_DBPASS="${DB_PASSWORD}"
+            export TXHOST_DEFAULT_DBNAME="${DB_NAME}"
+            echo -e "${Text} ${GREEN}Database '${DB_NAME}' ready and credentials passed to txAdmin.${NC}"
+        else
+            echo -e "${RED}[ERROR] Failed to provision database. Check that a database host exists in Admin > Databases.${NC}"
+        fi
+    fi
+else
+    echo -e "${Text} ${BLUE}No Pterodactyl admin API credentials provided, skipping DB provisioning.${NC}"
+fi
+
 SERVER_BIN_PATH="/home/container/alpine/opt/cfx-server/FXServer"
 if [ ! -f "$SERVER_BIN_PATH" ]; then
     echo -e "${RED}[ERROR] FiveM server binary not found at ${SERVER_BIN_PATH}${NC}"
