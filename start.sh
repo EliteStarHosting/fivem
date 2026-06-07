@@ -113,30 +113,27 @@ if [[ -n "${PTERO_URL}" && -n "${PTERO_ADMIN_KEY}" && -n "${P_SERVER_UUID}" ]]; 
         _DB_COUNT=$(echo "$_DB_LIST" | jq -r '.data | length')
 
         if [[ "$_DB_COUNT" -gt 0 ]]; then
-            _DB=$(echo "$_DB_LIST" | jq -r '.data[0].attributes')
-            DB_HOST=$(echo "$_DB_LIST" | jq -r '.data[0].attributes.relationships.host.attributes.host')
-            DB_PORT=$(echo "$_DB_LIST" | jq -r '.data[0].attributes.relationships.host.attributes.port')
-            DB_NAME=$(echo "$_DB_LIST" | jq -r '.data[0].attributes.database')
-            DB_USER=$(echo "$_DB_LIST" | jq -r '.data[0].attributes.username')
+            _DB_ID=$(echo "$_DB_LIST"   | jq -r '.data[0].attributes.id')
+            DB_HOST=$(echo "$_DB_LIST"  | jq -r '.data[0].attributes.relationships.host.attributes.host')
+            DB_PORT=$(echo "$_DB_LIST"  | jq -r '.data[0].attributes.relationships.host.attributes.port')
+            DB_NAME=$(echo "$_DB_LIST"  | jq -r '.data[0].attributes.database')
+            DB_USER=$(echo "$_DB_LIST"  | jq -r '.data[0].attributes.username')
             DB_PASSWORD=$(echo "$_DB_LIST" | jq -r '.data[0].attributes.relationships.password.attributes.password')
         else
             # 3. Use the configured database host ID (defaults to 1).
             # Set PTERO_DB_HOST_ID as a hidden egg variable if your panel uses a different host ID.
             _HOST_ID="${PTERO_DB_HOST_ID:-1}"
+            echo -e "${Text} ${BLUE}No database found, creating one...${NC}"
+            _DB_CREATE=$(curl "${_HDR[@]}" -X POST \
+                -d "{\"database\":\"fivem\",\"remote\":\"%\",\"host\":${_HOST_ID}}" \
+                "${_BASE}/servers/${_SRV_ID}/databases?include=password,host")
 
-            if [[ -z "$_HOST_ID" ]]; then
-            else
-                echo -e "${Text} ${BLUE}No database found, creating one...${NC}"
-                _DB_CREATE=$(curl "${_HDR[@]}" -X POST \
-                    -d "{\"database\":\"fivem\",\"remote\":\"%\",\"host\":${_HOST_ID}}" \
-                    "${_BASE}/servers/${_SRV_ID}/databases?include=password,host")
-
-                DB_HOST=$(echo "$_DB_CREATE" | jq -r '.attributes.relationships.host.attributes.host')
-                DB_PORT=$(echo "$_DB_CREATE" | jq -r '.attributes.relationships.host.attributes.port')
-                DB_NAME=$(echo "$_DB_CREATE" | jq -r '.attributes.database')
-                DB_USER=$(echo "$_DB_CREATE" | jq -r '.attributes.username')
-                DB_PASSWORD=$(echo "$_DB_CREATE" | jq -r '.attributes.relationships.password.attributes.password')
-            fi
+            _DB_ID=$(echo "$_DB_CREATE"  | jq -r '.attributes.id')
+            DB_HOST=$(echo "$_DB_CREATE" | jq -r '.attributes.relationships.host.attributes.host')
+            DB_PORT=$(echo "$_DB_CREATE" | jq -r '.attributes.relationships.host.attributes.port')
+            DB_NAME=$(echo "$_DB_CREATE" | jq -r '.attributes.database')
+            DB_USER=$(echo "$_DB_CREATE" | jq -r '.attributes.username')
+            DB_PASSWORD=$(echo "$_DB_CREATE" | jq -r '.attributes.relationships.password.attributes.password')
         fi
 
         if [[ -n "$DB_HOST" && "$DB_HOST" != "null" ]]; then
@@ -146,6 +143,14 @@ if [[ -n "${PTERO_URL}" && -n "${PTERO_ADMIN_KEY}" && -n "${P_SERVER_UUID}" ]]; 
             export TXHOST_DEFAULT_DBPASS="${DB_PASSWORD}"
             export TXHOST_DEFAULT_DBNAME="${DB_NAME}"
             echo -e "${Text} ${GREEN}Database '${DB_NAME}' ready and credentials passed to txAdmin.${NC}"
+
+            # 4. Inject the connection string into server.cfg via the panel API.
+            if [[ -n "$_DB_ID" && "$_DB_ID" != "null" ]]; then
+                curl "${_HDR[@]}" -X POST \
+                    "${_BASE}/servers/${_SRV_ID}/databases/${_DB_ID}/inject-connection-string" \
+                    > /dev/null
+                echo -e "${Text} ${GREEN}Database connection string injected into server.cfg.${NC}"
+            fi
         else
             echo -e "${RED}[ERROR] Failed to provision database. Check that a database host exists in Admin > Databases.${NC}"
         fi
