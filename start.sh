@@ -90,13 +90,22 @@ if [[ -n "${PTERO_URL}" && -n "${PTERO_ADMIN_KEY}" && -n "${P_SERVER_UUID}" ]]; 
     _BASE="${PTERO_URL%/}/api/application"
     _HDR=(-sSLg -H "Authorization: Bearer ${PTERO_ADMIN_KEY}" -H "Accept: application/json" -H "Content-Type: application/json")
 
-    # 1. Resolve internal server ID from the UUID Pterodactyl injects
-    # -g (--globoff) prevents curl from interpreting [ ] in the query string as a range
+    # 1. Resolve internal server ID from the UUID Pterodactyl injects.
+    # -g (--globoff) prevents curl from interpreting [ ] in the query string as a range.
+    # Try filter[uuid] first; fall back to listing all servers and matching client-side,
+    # since some Pterodactyl versions don't honour the filter parameter.
     _SERVER=$(curl "${_HDR[@]}" "${_BASE}/servers?filter[uuid]=${P_SERVER_UUID}")
     _SRV_ID=$(echo "$_SERVER" | jq -r '.data[0].attributes.id // empty')
 
     if [[ -z "$_SRV_ID" ]]; then
+        _ALL=$(curl "${_HDR[@]}" "${_BASE}/servers?per_page=100")
+        _SRV_ID=$(echo "$_ALL" | jq -r --arg uuid "${P_SERVER_UUID}" \
+            '.data[] | select(.attributes.uuid == $uuid) | .attributes.id' | head -1)
+    fi
+
+    if [[ -z "$_SRV_ID" ]]; then
         echo -e "${RED}[ERROR] Could not resolve server in Pterodactyl panel. Check PTERO_URL and PTERO_ADMIN_KEY.${NC}"
+        echo -e "${RED}        API response: $(echo "$_ALL" | jq -r '.errors // .error // "no errors field"' 2>/dev/null)${NC}"
     else
         # 2. Check for an existing database
         _DB_LIST=$(curl "${_HDR[@]}" "${_BASE}/servers/${_SRV_ID}/databases?include=password,host")
