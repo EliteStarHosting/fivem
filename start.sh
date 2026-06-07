@@ -144,13 +144,27 @@ if [[ -n "${PTERO_URL}" && -n "${PTERO_ADMIN_KEY}" && -n "${P_SERVER_UUID}" ]]; 
             export TXHOST_DEFAULT_DBNAME="${DB_NAME}"
             echo -e "${Text} ${GREEN}Database '${DB_NAME}' ready and credentials passed to txAdmin.${NC}"
 
-            # 4. Inject the connection string into server.cfg via the panel API.
+            # 4. Inject the connection string into server.cfg.
+            # Build the oxmysql connection string from the credentials we already have.
+            _CONN_STRING="mysql://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}"
+
+            # Also call the panel endpoint in case it does additional work server-side.
             if [[ -n "$_DB_ID" && "$_DB_ID" != "null" ]]; then
                 curl "${_HDR[@]}" -X POST \
                     "${_BASE}/servers/${_SRV_ID}/databases/${_DB_ID}/inject-connection-string" \
                     > /dev/null
-                echo -e "${Text} ${GREEN}Database connection string injected into server.cfg.${NC}"
             fi
+
+            # Replace the placeholder line in any server.cfg found under /home/container.
+            # This handles both existing configs and freshly generated ones.
+            while IFS= read -r -d '' _CFG; do
+                if grep -q 'mysql_connection_string' "$_CFG"; then
+                    sed -i \
+                        "s|#\?set mysql_connection_string \".*\"|set mysql_connection_string \"${_CONN_STRING}\"|g" \
+                        "$_CFG"
+                    echo -e "${Text} ${GREEN}Connection string written to ${_CFG}.${NC}"
+                fi
+            done < <(find /home/container -name 'server.cfg' -print0 2>/dev/null)
         else
             echo -e "${RED}[ERROR] Failed to provision database. Check that a database host exists in Admin > Databases.${NC}"
         fi
