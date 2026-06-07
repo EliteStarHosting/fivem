@@ -71,8 +71,6 @@ if [ -f "$YARN_BUILDER" ]; then
     esac
 fi
 
-echo -e "${Text} ${BLUE}Preparing environment variables...${NC}"
-
 export TXHOST_DATA_PATH=/home/container/txData
 export TXHOST_MAX_SLOTS=${MAX_PLAYERS}
 export TXHOST_TXA_PORT=${TXADMIN_PORT}
@@ -90,7 +88,6 @@ export TXHOST_PROVIDER_LOGO=${PROVIDER_LOGO}
 # (user_viewable: false, user_editable: false) so server owners cannot see them.
 # P_SERVER_UUID is automatically injected by Pterodactyl.
 if [[ -n "${PTERO_URL}" && -n "${PTERO_ADMIN_KEY}" && -n "${P_SERVER_UUID}" ]]; then
-    echo -e "${Text} ${BLUE}Provisioning database via Pterodactyl Application API...${NC}"
     _BASE="${PTERO_URL%/}/api/application"
     _HDR=(-sSLg -H "Authorization: Bearer ${PTERO_ADMIN_KEY}" -H "Accept: application/json" -H "Content-Type: application/json")
 
@@ -116,7 +113,6 @@ if [[ -n "${PTERO_URL}" && -n "${PTERO_ADMIN_KEY}" && -n "${P_SERVER_UUID}" ]]; 
         _DB_COUNT=$(echo "$_DB_LIST" | jq -r '.data | length')
 
         if [[ "$_DB_COUNT" -gt 0 ]]; then
-            echo -e "${Text} ${BLUE}Found existing database, reusing it...${NC}"
             _DB=$(echo "$_DB_LIST" | jq -r '.data[0].attributes')
             DB_HOST=$(echo "$_DB_LIST" | jq -r '.data[0].attributes.relationships.host.attributes.host')
             DB_PORT=$(echo "$_DB_LIST" | jq -r '.data[0].attributes.relationships.host.attributes.port')
@@ -129,7 +125,6 @@ if [[ -n "${PTERO_URL}" && -n "${PTERO_ADMIN_KEY}" && -n "${P_SERVER_UUID}" ]]; 
             _HOST_ID="${PTERO_DB_HOST_ID:-1}"
 
             if [[ -z "$_HOST_ID" ]]; then
-                echo -e "${RED}[ERROR] No database host ID set. Set PTERO_DB_HOST_ID in the egg variables.${NC}"
             else
                 echo -e "${Text} ${BLUE}No database found, creating one...${NC}"
                 _DB_CREATE=$(curl "${_HDR[@]}" -X POST \
