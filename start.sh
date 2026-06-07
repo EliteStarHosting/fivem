@@ -77,7 +77,11 @@ export TXHOST_DATA_PATH=/home/container/txData
 export TXHOST_MAX_SLOTS=${MAX_PLAYERS}
 export TXHOST_TXA_PORT=${TXADMIN_PORT}
 export TXHOST_FXS_PORT=${SERVER_PORT}
-export TXHOST_DEFAULT_CFXKEY=${FIVEM_LICENSE}
+# Only set the license key if a real value is provided; txAdmin validates the cfxk_ format
+# and will crash with a fatal E1020 error if given an empty/placeholder value.
+if [[ -n "${FIVEM_LICENSE}" && "${FIVEM_LICENSE}" != "none" ]]; then
+    export TXHOST_DEFAULT_CFXKEY=${FIVEM_LICENSE}
+fi
 export TXHOST_PROVIDER_NAME=${PROVIDER_NAME}
 export TXHOST_PROVIDER_LOGO=${PROVIDER_LOGO}
 
@@ -122,6 +126,7 @@ if [[ -n "${PTERO_URL}" && -n "${PTERO_ADMIN_KEY}" && -n "${P_SERVER_UUID}" ]]; 
         else
             # 3. Fetch the first available database host ID
             _HOSTS=$(curl "${_HDR[@]}" "${_BASE}/databases/hosts")
+            echo -e "${RED}[DEBUG] Hosts API raw response: ${_HOSTS}${NC}"
             _HOST_ID=$(echo "$_HOSTS" | jq -r '.data[0].attributes.id // empty')
 
             if [[ -z "$_HOST_ID" ]]; then
